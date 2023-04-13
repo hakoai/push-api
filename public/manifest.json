@@ -1,5 +1,15 @@
 {
     "name": "PushApi",
+    "short_name": "PushApi",
+    "description": "PushApi",
+    "icons": [
+        {
+            "src": "icon-192.png",
+            "sizes": "192x192",
+            "type": "image/png"
+        }
+    ],
     "lang": "ja",
+    "display": "standalone",
     "start_url": "/"
 }

@@ -39,17 +39,26 @@ const ProtectedRoute: NextApiHandler = async (req, res) => {
       process.env.PUSH_API_PRIVATE_KEY || ""
     );
     for (const v of data) {
-      const resp = await WebPush.sendNotification(
-        {
-          endpoint: v.endpoint,
-          keys: {
-            p256dh: v.p256dh,
-            auth: v.auth,
+      try {
+        const resp = await WebPush.sendNotification(
+          {
+            endpoint: v.endpoint,
+            keys: {
+              p256dh: v.p256dh,
+              auth: v.auth,
+            },
           },
-        },
-        JSON.stringify({ title: req.body })
-      );
-      console.log(resp);
+          JSON.stringify({ title: req.body }),
+          {
+            headers: {
+              Urgency: "normal",
+            },
+          }
+        );
+        console.log(resp);
+      } catch (e) {
+        console.warn(e);
+      }
     }
   }
   res.json({ ok: true });

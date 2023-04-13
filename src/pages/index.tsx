@@ -2,13 +2,7 @@ import { Auth } from "@supabase/auth-ui-react";
 import { ThemeSupa } from "@supabase/auth-ui-shared";
 import { useSupabaseClient, useUser } from "@supabase/auth-helpers-react";
 import { useSessionContext } from "@supabase/auth-helpers-react";
-import {
-  Dispatch,
-  SetStateAction,
-  useCallback,
-  useMemo,
-  useState,
-} from "react";
+import { Dispatch, SetStateAction, useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "react-query";
 import { useLocalStorage } from "react-use";
 
@@ -36,7 +30,14 @@ const useUnregisterSubscriptionAll = (
   const user = useUser();
   const supabase = useSupabaseClient();
   const queryClient = useQueryClient();
+
   return useMutation(async () => {
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("/sw.js", { scope: "/" });
+      const registration = await navigator.serviceWorker.ready;
+      registration.unregister();
+    }
+
     const { error } = await supabase
       .from("profiles")
       .delete()
@@ -46,14 +47,6 @@ const useUnregisterSubscriptionAll = (
     }
     queryClient.invalidateQueries();
     setEndpoint("");
-
-    if (!("serviceWorker" in navigator)) {
-      return;
-    }
-
-    navigator.serviceWorker.register("/sw.js", { scope: "/" });
-    const registration = await navigator.serviceWorker.ready;
-    registration.unregister();
   });
 };
 
@@ -129,6 +122,7 @@ const Home = () => {
   const supabase = useSupabaseClient();
   const user = useUser();
   const { data: profiles, status: profilesStatus } = useProfiles();
+  const [subscribeCount, setSubscribeCount] = useState<number>();
   const [endpoint, setEndpoint] = useLocalStorage("endpoint", "");
   const {
     mutate: registerSubscriptionMutate,
@@ -139,11 +133,36 @@ const Home = () => {
     status: unregisterSubscriptionStatus,
   } = useUnregisterSubscriptionAll(setEndpoint);
   const { mutate: sendMutate } = useSend();
-  const [text, setText] = useState("");
+  const [sendText, setSendText] = useState("");
   const isLoading =
     registerSubscriptionStatus === "loading" ||
     profilesStatus === "loading" ||
     unregisterSubscriptionStatus === "loading";
+
+  useEffect(() => {
+    const func = async () => {
+      const { data, error } = await supabase.from("profile_count").select();
+      if (error) {
+        throw error;
+      }
+      setSubscribeCount(data[0].count);
+      supabase
+        .channel("changes")
+        .on(
+          "postgres_changes",
+          {
+            event: "UPDATE",
+            schema: "public",
+            table: "profile_count",
+          },
+          (payload) => {
+            setSubscribeCount(payload.new.count);
+          }
+        )
+        .subscribe();
+    };
+    func();
+  }, [supabase]);
 
   const isSubscrived = profiles?.some(
     (profile) => profile.endpoint === endpoint
@@ -157,84 +176,119 @@ const Home = () => {
     );
   }
 
+  if (!("Notification" in window)) {
+    return (
+      <div className="container" style={{ padding: "50px 0 100px 0" }}>
+        <div>Notificationに対応していないブラウザの可能性があります。</div>
+        <div>
+          iOS16.4以降の場合はSafariでのみアプリをインストールすることでNotificationを有効にできます。
+        </div>
+        <div>インストール方法</div>
+        <div>1. ブラウザの共有ボタンをタップ。</div>
+        <div>2. ホーム画面に追加をタップ。</div>
+        <div>3. ホームからアプリを起動。</div>
+      </div>
+    );
+  }
+
   return (
     <div className="container" style={{ padding: "50px 0 100px 0" }}>
       {!sessionContext.session || !user ? (
-        <Auth
-          supabaseClient={supabase}
-          appearance={{ theme: ThemeSupa }}
-          providers={["github", "google"]}
-          theme="dark"
-          onlyThirdPartyProviders
-        />
-      ) : (
-        <div className="form-widget">
-          <div style={{ padding: "0 0 15px 0" }}>
-            <button
-              disabled={isLoading || isSubscrived}
-              className="button block"
-              onClick={() => registerSubscriptionMutate()}
-            >
-              {isSubscrived ? "購読中" : "購読開始"}
-            </button>
-          </div>
-          <div style={{ padding: "0 0 15px 0" }}>
-            <label htmlFor="email">Email</label>
-            <input
-              id="email"
-              type="text"
-              value={sessionContext.session.user.email}
-              disabled
-            />
-          </div>
-          <div style={{ padding: "0 0 15px 0" }}>
-            {profiles?.map((profile) => {
-              return (
-                <div key={profile.id}>
-                  <label htmlFor="email">Endpoint</label>
-                  <input
-                    type="text"
-                    value={profile.endpoint.slice(0, 40) + "..."}
-                    disabled
-                  />
-                </div>
-              );
-            })}
-          </div>
-          <div style={{ padding: "0 0 15px 0" }}>
-            <button
-              disabled={isLoading}
-              className="button block"
-              onClick={() => unregisterSubscriptionMutate()}
-            >
-              すべての購読解除/Service Workers 削除
-            </button>
-          </div>
-          {user.email === "hakoai64@gmail.com" ? <div style={{ padding: "0 0 15px 0" }}>
-            <label>SendText</label>
-            <input
-              id="Text"
-              type="text"
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-            />
-            <button
-              className="button block"
-              onClick={() => sendMutate(text)}
-            >
-              Push Message
-            </button>
-          </div> : null}
+        <>
+          <div>いずれかのプロバイダーでログインしてください。</div>
+          <div>プロバイダーに登録されているメールアドレスが取得されます。</div>
           <div>
-            <button
-              disabled={isLoading}
-              className="button block"
-              onClick={() => supabase.auth.signOut()}
-            >
-              Sign Out
-            </button>
+            ユーザの管理のみに使用され、発表終了後はこのアプリケーションから削除されます。
           </div>
-        </div>
+          <Auth
+            supabaseClient={supabase}
+            appearance={{ theme: ThemeSupa }}
+            providers={["github", "google"]}
+            theme="dark"
+            onlyThirdPartyProviders
+          />
+        </>
+      ) : (
+        <>
+          <div>購読開始を押すとブラウザが通知を許可するか確認を行います。</div>
+          <div>
+            ボタンが「購読中」になっていれば通知を受ける準備ができています。
+          </div>
+          <div>
+            発表終了後に下のほうにある「すべての購読解除/Service Workers
+            削除」を押してください。
+          </div>
+          {subscribeCount ? <div>購読登録数:{subscribeCount}</div> : null}
+          <div className="form-widget">
+            <div style={{ padding: "0 0 15px 0" }}>
+              <button
+                disabled={isLoading || isSubscrived}
+                className="button block"
+                onClick={() => registerSubscriptionMutate()}
+              >
+                {isSubscrived ? "購読中" : "購読開始"}
+              </button>
+            </div>
+            <div style={{ padding: "0 0 15px 0" }}>
+              <label htmlFor="email">Email</label>
+              <input
+                id="email"
+                type="text"
+                value={sessionContext.session.user.email}
+                disabled
+              />
+            </div>
+            <div style={{ padding: "0 0 15px 0" }}>
+              {profiles?.map((profile) => {
+                return (
+                  <div key={profile.id}>
+                    <label htmlFor="email">Endpoint</label>
+                    <input
+                      type="text"
+                      value={profile.endpoint.slice(0, 50) + "..."}
+                      disabled
+                    />
+                  </div>
+                );
+              })}
+            </div>
+            <div style={{ padding: "0 0 15px 0" }}>
+              <button
+                disabled={isLoading}
+                className="button block"
+                onClick={() => unregisterSubscriptionMutate()}
+              >
+                すべての購読解除/Service Workers 削除
+              </button>
+            </div>
+            {user.email === "hakoai64@gmail.com" ? (
+              <div style={{ padding: "0 0 15px 0" }}>
+                <label>SendText</label>
+                <input
+                  id="Text"
+                  type="text"
+                  value={sendText}
+                  onChange={(e) => setSendText(e.target.value)}
+                />
+                <button
+                  className="button block"
+                  onClick={() => sendMutate(sendText)}
+                >
+                  Push Message
+                </button>
+              </div>
+            ) : null}
+            <div>
+              <button
+                disabled={isLoading}
+                className="button block"
+                onClick={() => supabase.auth.signOut()}
+              >
+                Sign Out
+              </button>
+            </div>
+          </div>
+        </>
       )}
     </div>
   );

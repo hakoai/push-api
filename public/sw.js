@@ -3,7 +3,9 @@ self.addEventListener('push', evt => {
     console.log(data);
     const title = data.title;
     const options = {
-        body: data.body
+        tag: "",
+        body: "",
+        icon: "https://push-api-hakoai.vercel.app/icon-192.png"
     }
     evt.waitUntil(self.registration.showNotification(title, options));
 });
