@@ -38,7 +38,7 @@ const ProtectedRoute: NextApiHandler = async (req, res) => {
       process.env.NEXT_PUBLIC_PUSH_API_PUBLIC_KEY || "",
       process.env.PUSH_API_PRIVATE_KEY || ""
     );
-    const promises = data.map(async (v) => {
+    for (const v of data) {
       console.log(v);
       const resp = await WebPush.sendNotification(
         {
@@ -51,8 +51,7 @@ const ProtectedRoute: NextApiHandler = async (req, res) => {
         JSON.stringify({ title: req.body })
       );
       console.log(resp);
-    });
-    Promise.all(promises);
+    }
   }
   res.json({ ok: true });
 };
