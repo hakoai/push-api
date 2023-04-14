@@ -27,8 +27,6 @@ const ProtectedRoute: NextApiHandler = async (req, res) => {
     console.error(error);
     return res.status(500).json({
       error: "query error",
-      description:
-        "The user does not have an active session or is not authenticated",
     });
   }
 
@@ -38,14 +36,14 @@ const ProtectedRoute: NextApiHandler = async (req, res) => {
       process.env.NEXT_PUBLIC_PUSH_API_PUBLIC_KEY || "",
       process.env.PUSH_API_PRIVATE_KEY || ""
     );
-    for (const v of data) {
+    for (const params of data) {
       try {
-        const resp = await WebPush.sendNotification(
+        const result = await WebPush.sendNotification(
           {
-            endpoint: v.endpoint,
+            endpoint: params.endpoint,
             keys: {
-              p256dh: v.p256dh,
-              auth: v.auth,
+              p256dh: params.p256dh,
+              auth: params.auth,
             },
           },
           JSON.stringify({ title: req.body }),
@@ -55,7 +53,7 @@ const ProtectedRoute: NextApiHandler = async (req, res) => {
             },
           }
         );
-        console.log(resp);
+        console.log(result);
       } catch (e) {
         console.warn(e);
       }
